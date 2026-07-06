@@ -8,3 +8,14 @@
 html {
   font-size: 18px;
 }
+
+// Give the post title more presence (was 1.75rem / 31.5px).
+.article-title {
+  font-size: 2.75rem;
+  line-height: 1.15;
+}
+
+// Hide the Obsidian "Properties" (frontmatter) box for a cleaner opening.
+.note-properties {
+  display: none;
+}
