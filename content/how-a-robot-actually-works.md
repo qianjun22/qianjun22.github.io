@@ -139,6 +139,7 @@ But if you only remember one thing, make it the shape of the machine: a fast loo
 
 ## Further reading
 
+- **[Unitree's `unitree_rl_gym` — G1 walking example](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/legged_gym/envs/g1/g1_config.py)** — the source of the "47 numbers in, 12 out" figure in the opening: Unitree's own RL config defines the G1 policy with `num_observations = 47` and `num_actions = 12`.
 - **[ROS 2 documentation](https://docs.ros.org/)** — nodes, topics, and the real-time story, straight from the source (and free).
 - **[*Modern Robotics: Mechanics, Planning, and Control*](https://hades.mech.northwestern.edu/images/7/7f/MR.pdf)** (Lynch & Park) — the planner/controller foundations, with a free PDF and video lectures.
 - **[Humanoid Locomotion and Manipulation: a survey](https://arxiv.org/abs/2501.02116)** — the model-based-vs-learning landscape, without hype.
