@@ -9,11 +9,27 @@ tags:
 
 *One forward command, followed all the way down from "walk" to current in a motor.*
 
-A Unitree G1 can walk using a neural network that reads 47 numbers and emits 12. That's the whole policy. Every 20 milliseconds it gets the body's angular velocity, which way gravity is pointing, the joint angles and velocities, the command from the joystick, and a few bookkeeping signals. Out come 12 target leg angles. Something much faster turns those targets into motor torque, and somehow the ~35 kg machine stays upright.
+A Unitree G1 can walk using a neural network that reads 47 numbers and emits 12. That's the whole policy — at least in Unitree's own reinforcement-learning example. Every 20 milliseconds it gets the body's angular velocity, which way gravity is pointing, the joint angles and velocities, the command from the joystick, and a few bookkeeping signals. Out come 12 target leg angles. Something much faster turns those targets into motor torque, and somehow the ~35 kg machine stays upright.
 
 "Somehow" is carrying a lot of weight in that sentence. The first time I went looking through a robot's software, I made the obvious mistake: I searched for the brain — the one program where pixels go in and intelligent motion comes out. There is no such program. There's a pile of loops running at wildly different speeds. The motor servo cares about the next fraction of a millisecond. The walking policy cares about the next footstep. The task planner cares about the far side of the room. And if the planner wanders off to think for a moment, the servo still has to keep the robot off the floor.
 
-That timing hierarchy *is* the robot. Linux, ROS, GPUs, planners, policies, simulators — all of it is implementation detail hung around one stubborn fact: **gravity does not wait for software.** So let's follow a single "walk forward" command down the stack and watch each layer earn its place. The best way to understand the machine is to ask, at every step: what comes in, what goes out, how often, and what happens if this part is late.
+That timing hierarchy *is* the robot. Linux, ROS, GPUs, planners, policies, simulators — all of it is implementation detail hung around one stubborn fact: **gravity does not wait for software.** This is also why robot infrastructure is hard: you are not deploying one model, you are deploying a *timing-critical stack*, where every layer runs at a different clock and fails in a different way. So let's follow a single "walk forward" command down the stack and watch each layer earn its place. The best way to understand the machine is to ask, at every step: what comes in, what goes out, how often, and what happens if this part is late.
+
+Here's the whole descent on one page — one command, top to bottom, getting faster as it falls:
+
+```
+"walk forward"
+   │
+   ▼  Intent / task planner        ~1 Hz     where in the room
+   ▼  Footstep planner             ~20 Hz    where the feet go
+   ▼  Walking policy (neural net)  ~50 Hz    47 numbers in → 12 leg targets
+   ▼  Joint controller (PD)        ~200 Hz+  desired vs actual angle → effort
+   ▼  Motor servo / current loop   ~1 kHz+   the loop that must never be late
+   ▼
+ gravity  (does not wait)
+```
+
+*Each arrow down loses information and speeds up. The slow layers are allowed to think; the fast layers at the bottom are not allowed to be late.*
 
 ---
 
@@ -87,7 +103,7 @@ The **Unitree G1** hands you the stack. The EDU variant gives you low-level acce
 ![[spot-official.jpg]]
 *Boston Dynamics Spot. Image: Boston Dynamics.*
 
-**Boston Dynamics Spot** draws the boundary in the opposite place. You say "walk there," and Spot handles the balance, the stairs, the recovery from a slip — its production locomotion is a proprietary hybrid of reinforcement learning and model-predictive control, and you don't touch it. What you get is a contract: a clean high-level interface, and a reliable behavior behind it. There's a separately licensed API that streams low-level joint commands at 100–333 Hz for teams that qualify, but the default posture is unmistakable — **Boston Dynamics keeps the falling problem and sells you the walking.** From the outside both robots expose the same broad hierarchy, high-level intent over a fast joint loop; the difference is how far down the vendor lets you reach, and therefore who's responsible when physics wins.
+**Boston Dynamics Spot** draws the boundary in the opposite place. You say "walk there," and Spot handles the balance, the stairs, the recovery from a slip — its production locomotion is a proprietary hybrid of reinforcement learning and model-predictive control, and you don't touch it. What you get is a contract: a clean high-level interface, and a reliable behavior behind it. There's a separately licensed joint-level control API that streams low-level commands at high rate (hundreds of Hz) for teams that qualify, but the default posture is unmistakable — **Boston Dynamics keeps the falling problem and sells you the walking.** From the outside both robots expose the same broad hierarchy, high-level intent over a fast joint loop; the difference is how far down the vendor lets you reach, and therefore who's responsible when physics wins.
 
 The rest of the field spreads along that same axis. At the open end sit Unitree's larger H1 and research builds like the open-source Berkeley Humanoid. In the middle, Agility's Digit is already pulling real warehouse shifts behind a developer API — a humanoid Spot. And at the sealed extreme are Figure, Apptronik's Apollo, Boston Dynamics' electric Atlas, and Tesla's Optimus: stunning demos, no published specs, no SDK, no way in. The pattern is almost a law: the more a robot promises to just work, the less of it you're allowed to touch.
 
@@ -97,7 +113,7 @@ The rest of the field spreads along that same axis. At the open end sit Unitree'
 
 The stack I've described is modular — estimator, planner, controller, each a box with an interface — and the frontier direction is to blur those boxes into a single learned policy that maps camera pixels and a language instruction more or less straight to action. Vision-language-action models like OpenVLA and NVIDIA's GR00T do exactly this: they produce sensorimotor actions, not just high-level plans, trained on a mixture of real robot demonstrations, cross-embodiment datasets, and (for the video part) human footage. It's genuinely promising and genuinely not solved — reliable, long-horizon, cross-robot autonomy is still ahead of us, and even an end-to-end policy still emits something a lower-level controller has to catch: a joint target, a chunk of end-effector deltas, a trajectory, at some rate, wrapped in the same safety layer as before.
 
-The most mature version of this idea isn't a robot at all. Tesla said its FSD v12 replaced the hand-written **city-streets** driving stack with a network trained end-to-end on millions of fleet video clips — folding perception and planning into a single learned policy, and (Musk claimed) shrinking its 300,000-plus lines of C++ driving code by roughly two orders of magnitude. It apparently learns largely from curated human-driving video, which is exactly why Tesla's fleet is the textbook data flywheel. "End-to-end" there means end-to-end *trained*, not one blob that swallowed everything: the learned policy still drives low-level actuation and sits inside a larger vehicle-control and safety system. And a car won't topple if the network stutters for a moment — it keeps rolling — whereas a walking humanoid has a much tighter, less forgiving stabilization budget. The direction is identical; the timing is just crueler on legs.
+The most mature version of this idea isn't a robot at all. Tesla said its FSD v12 replaced the hand-written city-streets driving stack with a network trained end-to-end on millions of fleet video clips — and Musk claimed it cut hundreds of thousands of lines of C++ dramatically in the process. But "end-to-end" means end-to-end *trained*, not one blob that swallowed everything: the learned policy still drives low-level actuation inside a larger vehicle-control and safety system. The one difference that matters for us is timing — a car that stutters for a moment keeps rolling; a walking humanoid falls. Same direction; crueler deadline on legs.
 
 That's the thing to hold onto. Even if the top of the stack collapses into one model, the bottom doesn't go anywhere. Gravity still doesn't wait; something still has to run at 1 kHz; the learned brain still runs *on* a real-time controller, on a computer, on the machinery that keeps the robot upright while it thinks. The models get smarter. The clocks stay the same.
 
@@ -114,6 +130,8 @@ It is a genuinely big idea, and it is not solved. The catch is compounding error
 ---
 
 The software is the part that fits in a blog post, which makes it easy to forget it's a fraction of the actual problem. A demo works once; a product works ten thousand times unattended, and most of that reliability is in the parts no diagram flatters — the actuators that set the ceiling on everything above them, the state estimator, the scarce robot data, the safety case, the unglamorous integration into a real building. You can't software your way past a bad motor.
+
+That's the real lesson, and it's the one the field keeps relearning: **reliable robots don't come from a smarter model alone — they come from the stack around it.** The runtime that guarantees the fast loop's deadline, the safety layer that decides when to stop, the deployment and observability that let you see *why* it fell last Tuesday, the simulator it grew up in. The model is necessary; it is nowhere near sufficient. Whoever wants dependable robots has to own that whole timing-critical stack, not just the network at the top of it.
 
 But if you only remember one thing, make it the shape of the machine: a fast loop at the core that cannot be late, slower and smarter loops stacked outside it, and a hard physical deadline waiting at every boundary. Forty-seven numbers in, twelve out, fifty times a second — and gravity does the rest.
 
