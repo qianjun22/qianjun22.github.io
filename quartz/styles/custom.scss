@@ -1,3 +1,10 @@
 @use "./variables.scss" as *;
 
 // put your custom CSS here!
+
+// Bump the base font size so body text and headings scale up together.
+// Quartz sizes everything in rem off the root, so this proportionally
+// enlarges the whole page (default browser root is 16px).
+html {
+  font-size: 18px;
+}
